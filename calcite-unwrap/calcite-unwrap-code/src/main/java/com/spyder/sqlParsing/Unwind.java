@@ -114,7 +114,7 @@ public class Unwind {
     }
 
     public static void main(String[] args) throws Exception {       
-        final String query = "SELECT e.first_name AS FirstName, s.salary AS Salary from employee AS e join salary AS s on e.emp_id=s.emp_id and e.id=s.id where e.organization = 'Tesla' and s.organization = 'Tesla' order by e.id";
+        final String query = "SELECT e.first_name AS FirstName, s.salary AS Salary from employee AS e join salary AS s on e.emp_id=s.emp_id and e.id=s.id where (e.organization = 'Tesla' and s.organization = 'Tesla') or e.id = 5 order by e.id";
         final String query2 = "SELECT tbl1.col1 as COL1, tbl2.col2, tbl3.col3 as COL_THREE FROM tbl1, tb2, tb3 where COL1 > 1 order by tbl.col2";
         String q = "SELECT    t1.col2 AS col1 \n" + "    , t1.col6 AS col2 \n" + "    , t2.col8 AS col3 \n"
         + "    , COALESCE(t3.col4, 'unknown') AS col4 \n" + "    , SUM(t1.col5) AS col5 \n"
@@ -125,7 +125,7 @@ public class Unwind {
         + "    (t1.col3 = 2 AND t2.col4 = 5) \n" + "GROUP BY \n" + "    col1 \n" + "    , t1.col6 \n"
         + "    , t2.col8 \n" + "    , COALESCE(t3.col4, 'unknown') \n" + "ORDER BY t1.col2, col2";
 
-        final SqlParser parser = SqlParser.create(q);
+        final SqlParser parser = SqlParser.create(query);
         final SqlNode sqlNode = parser.parseQuery();
         // final SqlSelect sqlSelect = (SqlSelect) sqlNode;
         // final SqlJoin from = (SqlJoin) sqlSelect.getFrom();
@@ -187,13 +187,18 @@ public class Unwind {
                 // Group By Logic
                 JSONArray rgroupBy = new JSONArray();
                 SqlNodeList groupByList = ((SqlSelect) node).getGroup();
-                for (SqlNode el: groupByList){
-                    rgroupBy.put(unwrap(el));
+                if (groupByList != null) {
+                    for (SqlNode el: groupByList){
+                        rgroupBy.put(unwrap(el));
+                    }
+                    select.put("groupBy", rgroupBy);
                 }
-                select.put("groupBy", rgroupBy);
 
-                // Get WHERE condition logic
-                JSONObject whereConditions = new JSONObject();
+                SqlNode where = ((SqlSelect) node).getWhere();
+                if (where != null) {
+                    select.put("where", unwrap(where));
+                }
+
                 // join.put("joinType", ((SqlJoin) node).getJoinType().toString());
                 // join.put("joinCondition", ((SqlJoin) node).getConditionType().toString());
                 // join.put("joinLeft", unwrap(((SqlJoin) node).getLeft()));
@@ -222,6 +227,34 @@ public class Unwind {
                 // other_function.put("name", (String) ((SqlFunction) ((SqlBasicCall) node)).getName();
                 other_function.put("string", (String) node.toString());
                 return (other_function);
+            
+            case AND:
+            case OR:
+                JSONObject logic = new JSONObject();
+                logic.put("type", "LOGICAL_CONDITION");
+                logic.put("condition_type", node.getKind().toString().toLowerCase());
+                logic.put("left", unwrap((SqlNode) ((SqlBasicCall) node).operand(0)));
+                logic.put("right", unwrap((SqlNode) ((SqlBasicCall) node).operand(1)));
+
+                return (logic);
+
+            case EQUALS:
+            case NOT_EQUALS:
+            case GREATER_THAN:
+            case GREATER_THAN_OR_EQUAL:
+            case LESS_THAN:
+            case LESS_THAN_OR_EQUAL:
+            case LIKE:
+                JSONObject comparison = new JSONObject();
+                comparison.put("type", "comparison");
+                comparison.put("comparison_type", node.getKind().toString().toLowerCase());
+                comparison.put("left", unwrap((SqlNode) ((SqlBasicCall) node).operand(0)));
+                comparison.put("right", unwrap((SqlNode) ((SqlBasicCall) node).operand(1)));
+
+                return (comparison);
+
+
+
 
             default:
                 System.out.println("some other type :: " + node.getKind().name());
