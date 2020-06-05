@@ -1,3 +1,0 @@
-[submodule "calcite"]
-	path = calcite
-	url = https://github.com/apache/calcite.git
